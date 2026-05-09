@@ -1,4 +1,7 @@
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any, Optional
 
 from langchain_core.messages import AIMessage
@@ -117,7 +120,76 @@ _PROVIDER_CONFIG = {
     "glm": ("https://api.z.ai/api/paas/v4/", "ZHIPU_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
     "ollama": ("http://localhost:11434/v1", None),
+    "databricks": (None, None),
 }
+
+
+def _build_databricks_base_url() -> str:
+    host = os.environ.get("DATABRICKS_HOST", "").strip()
+    if not host:
+        raise ValueError(
+            "Databricks provider requires DATABRICKS_HOST "
+            "(e.g. https://<workspace>.cloud.databricks.com)."
+        )
+    return f"{host.rstrip('/')}/serving-endpoints"
+
+
+def _request_databricks_oauth_token(host: str, client_id: str, client_secret: str) -> str:
+    token_url = f"{host.rstrip('/')}/oidc/v1/token"
+    payload = urllib.parse.urlencode(
+        {
+            "grant_type": "client_credentials",
+            "scope": "all-apis",
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        token_url,
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise ValueError(
+            f"Failed to fetch Databricks OAuth token ({exc.code}): {detail}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise ValueError(f"Failed to reach Databricks OAuth endpoint: {exc}") from exc
+
+    import json
+    token_payload = json.loads(body)
+    access_token = token_payload.get("access_token")
+    if not access_token:
+        raise ValueError(
+            "Databricks OAuth token response did not include access_token."
+        )
+    return access_token
+
+
+def _build_databricks_api_key() -> str:
+    # Prefer explicit token/PAT if provided.
+    direct_token = (
+        os.environ.get("DATABRICKS_API_KEY")
+        or os.environ.get("DATABRICKS_TOKEN")
+    )
+    if direct_token:
+        return direct_token
+
+    host = os.environ.get("DATABRICKS_HOST", "").strip()
+    client_id = os.environ.get("DATABRICKS_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET", "").strip()
+    if not host or not client_id or not client_secret:
+        raise ValueError(
+            "Databricks provider requires either DATABRICKS_API_KEY "
+            "(or DATABRICKS_TOKEN) or all of DATABRICKS_HOST, "
+            "DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET."
+        )
+    return _request_databricks_oauth_token(host, client_id, client_secret)
 
 
 class OpenAIClient(BaseLLMClient):
@@ -149,12 +221,16 @@ class OpenAIClient(BaseLLMClient):
         # provider default so users can route through their own gateway.
         if self.provider in _PROVIDER_CONFIG:
             default_base, api_key_env = _PROVIDER_CONFIG[self.provider]
-            llm_kwargs["base_url"] = self.base_url or default_base
-            if api_key_env:
+            if self.provider == "databricks":
+                llm_kwargs["base_url"] = self.base_url or _build_databricks_base_url()
+                llm_kwargs["api_key"] = _build_databricks_api_key()
+            elif api_key_env:
+                llm_kwargs["base_url"] = self.base_url or default_base
                 api_key = os.environ.get(api_key_env)
                 if api_key:
                     llm_kwargs["api_key"] = api_key
             else:
+                llm_kwargs["base_url"] = self.base_url or default_base
                 llm_kwargs["api_key"] = "ollama"
         elif self.base_url:
             llm_kwargs["base_url"] = self.base_url
@@ -164,9 +240,9 @@ class OpenAIClient(BaseLLMClient):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
-        # Native OpenAI: use Responses API for consistent behavior across
-        # all model families. Third-party providers use Chat Completions.
-        if self.provider == "openai":
+        # OpenAI-compatible GPT-5-style endpoints may require /v1/responses
+        # when using reasoning + tools (e.g. Databricks-served gpt-5.5).
+        if self.provider in ("openai", "databricks"):
             llm_kwargs["use_responses_api"] = True
 
         # DeepSeek's thinking-mode quirks live in their own subclass so the

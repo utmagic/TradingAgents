@@ -101,6 +101,18 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("Custom model ID", "custom"),
         ],
     },
+    "databricks": {
+        "quick": [
+            ("Databricks GPT-5.5", "databricks-gpt-5-5"),
+            ("DBRX Instruct", "databricks-dbrx-instruct"),
+            ("Custom model ID", "custom"),
+        ],
+        "deep": [
+            ("Databricks GPT-5.5", "databricks-gpt-5-5"),
+            ("DBRX Instruct", "databricks-dbrx-instruct"),
+            ("Custom model ID", "custom"),
+        ],
+    },
     # OpenRouter: fetched dynamically. Azure: any deployed model name.
     "ollama": {
         "quick": [
