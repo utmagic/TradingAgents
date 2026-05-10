@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import {
   Alert,
+  AppBar,
   Box,
   Button,
   Checkbox,
@@ -53,6 +54,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ZoomOutMapIcon from '@mui/icons-material/ZoomOutMap'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import { API_BASE, RunDetail, RunEvent, RunSummary, apiDelete, apiGet, apiPost, apiPut } from './api'
 
 type ModelOption = { label: string; value: string }
@@ -200,6 +202,10 @@ export function App() {
   const [progress, setProgress] = useState(0)
 
   const modelOptions = useMemo(() => options?.models?.[provider], [options, provider])
+
+  useEffect(() => {
+    document.title = '증권거래 길잡이'
+  }, [])
 
   useEffect(() => {
     void loadOptions()
@@ -582,24 +588,13 @@ export function App() {
           }
         }}
       >
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-          <IconButton
-            onClick={() => setSidebarOpen(false)}
-            sx={{
-              width: 40,
-              height: 40,
-              border: '1px solid #76a8ff',
-              bgcolor: '#f0f6ff',
-              color: '#1f6fff',
-              '&:hover': { bgcolor: '#e6f0ff' }
-            }}
-          >
-            <ChevronLeftIcon />
-          </IconButton>
-        </Box>
-        <Paper sx={{ p: 2, mb: 2, background: 'linear-gradient(135deg, #1f6fff 0%, #5ea0ff 100%)', color: 'white' }}>
-          <Typography variant="h5" gutterBottom>TradingAgents</Typography>
-          <Typography variant="body2">Intercom-inspired control panel</Typography>
+        <Paper sx={{ p: 1.2, mb: 2, background: '#f5f9ff', color: '#1f6fff', border: '1px solid #d6e6ff' }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TrendingUpIcon sx={{ fontSize: 22 }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+              빠른 실행 패널
+            </Typography>
+          </Stack>
         </Paper>
         <Stack spacing={1.5}>
           <Button variant="outlined" onClick={() => setTickerSearchOpen(true)}>증권코드 검색 팝업</Button>
@@ -665,33 +660,55 @@ export function App() {
       </Drawer>
 
       <Box component="main" sx={{ flexGrow: 1, p: 2, background: 'radial-gradient(circle at 0% 0%, #e9f1ff, #f7fbff 60%)' }}>
-        {!sidebarOpen && (
-          <Box sx={{ position: 'fixed', left: 12, top: 12, zIndex: 1201 }}>
-            <IconButton
-              onClick={() => setSidebarOpen(true)}
-              sx={{
-                width: 44,
-                height: 44,
-                border: '1px solid #76a8ff',
-                bgcolor: '#f0f6ff',
-                color: '#1f6fff',
-                boxShadow: '0 4px 12px rgba(31, 111, 255, 0.2)',
-                '&:hover': { bgcolor: '#e6f0ff' }
-              }}
+        <AppBar
+          position="sticky"
+          elevation={0}
+          sx={{
+            mb: 1.5,
+            px: 2,
+            py: 1.2,
+            borderRadius: '12px',
+            border: '1px solid #d4e4ff',
+            bgcolor: 'rgba(255,255,255,0.92)',
+            color: '#1e3a5f',
+            backdropFilter: 'blur(4px)'
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <IconButton
+                onClick={() => setSidebarOpen((prev) => !prev)}
+                sx={{
+                  width: 38,
+                  height: 38,
+                  border: '1px solid #76a8ff',
+                  bgcolor: '#f0f6ff',
+                  color: '#1f6fff',
+                  '&:hover': { bgcolor: '#e6f0ff' },
+                  mr: 0.5
+                }}
+              >
+                {sidebarOpen ? <ChevronLeftIcon /> : <MenuIcon />}
+              </IconButton>
+              <TrendingUpIcon sx={{ fontSize: 24, color: '#1f6fff' }} />
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.2 }}>
+                  증권거래 길잡이
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#4e6b8f' }}>
+                  AI 기반 투자 분석 컨트롤 패널
+                </Typography>
+              </Box>
+            </Stack>
+            <Button
+              variant="outlined"
+              startIcon={<SettingsIcon />}
+              onClick={openSettings}
             >
-              <MenuIcon />
-            </IconButton>
+              관리자 설정
+            </Button>
           </Box>
-        )}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={<SettingsIcon />}
-            onClick={openSettings}
-          >
-            관리자 설정
-          </Button>
-        </Box>
+        </AppBar>
         {err && <Alert severity="error" sx={{ mb: 2 }}>{err}</Alert>}
 
         <Paper sx={{ p: 2, mb: 2 }}>
