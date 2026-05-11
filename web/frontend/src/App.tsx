@@ -491,8 +491,17 @@ export function App() {
   const reportTimeline = events.filter((e) => e.event_type === 'report_section').slice().reverse()
   const requestCancel = async () => {
     if (!selectedRunId) return
-    await apiPost(`/api/runs/${selectedRunId}/cancel`, {})
-    await loadRun(selectedRunId)
+    try {
+      setSelectedRun((prev) => (
+        prev ? { ...prev, cancel_requested: true, status: prev.status === 'queued' ? 'cancelled' : prev.status } : prev
+      ))
+      const updated = await apiPost<RunDetail>(`/api/runs/${selectedRunId}/cancel`, {})
+      setSelectedRun(updated)
+      setProgress(updated.progress ?? progress)
+      await refreshRuns()
+    } catch (e) {
+      setErr(`실행 취소에 실패했습니다: ${String(e)}`)
+    }
   }
 
   const toggleRunChecked = (runId: string) => {
@@ -817,7 +826,11 @@ export function App() {
               variant="outlined"
               color="error"
               onClick={requestCancel}
-              disabled={!selectedRun || !['queued', 'running'].includes(selectedRun.status)}
+              disabled={
+                !selectedRun
+                || !['queued', 'running'].includes(selectedRun.status)
+                || !!selectedRun.cancel_requested
+              }
             >
               실행 취소
             </Button>

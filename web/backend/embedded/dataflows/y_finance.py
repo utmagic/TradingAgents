@@ -7,7 +7,10 @@ from web.backend.tls_env import configure_tls_ca_bundle
 configure_tls_ca_bundle()
 
 import os
+from yfinance.exceptions import YFRateLimitError
 from web.backend.yfinance_client import ticker as yf_ticker
+from web.backend.yfinance_client import download as yf_download
+from .naver_finance import fetch_ohlcv_naver, is_kr_symbol
 from .stockstats_utils import StockstatsUtils, _clean_dataframe, yf_retry, load_ohlcv, filter_financials_by_date
 
 def get_YFin_data_online(
@@ -19,11 +22,33 @@ def get_YFin_data_online(
     datetime.strptime(start_date, "%Y-%m-%d")
     datetime.strptime(end_date, "%Y-%m-%d")
 
-    # Create ticker object
-    ticker = yf_ticker(symbol.upper())
+    if is_kr_symbol(symbol):
+        data = fetch_ohlcv_naver(symbol.upper(), start_date, end_date)
+    else:
+        # Create ticker object
+        ticker = yf_ticker(symbol.upper())
 
-    # Fetch historical data for the specified date range
-    data = yf_retry(lambda: ticker.history(start=start_date, end=end_date))
+        # Fetch historical data for the specified date range
+        try:
+            data = yf_retry(lambda: ticker.history(start=start_date, end=end_date))
+        except YFRateLimitError:
+            return "Yahoo Finance rate limit reached. Please retry in a few minutes."
+
+        # Some yfinance paths occasionally return empty history for valid symbols.
+        # Retry via direct download endpoint as a fallback.
+        if data.empty:
+            try:
+                data = yf_retry(lambda: yf_download(
+                    symbol.upper(),
+                    start=start_date,
+                    end=end_date,
+                    interval="1d",
+                    auto_adjust=False,
+                    progress=False,
+                    multi_level_index=False,
+                ))
+            except YFRateLimitError:
+                return "Yahoo Finance rate limit reached. Please retry in a few minutes."
 
     # Check if data is empty
     if data.empty:
@@ -31,8 +56,8 @@ def get_YFin_data_online(
             f"No data found for symbol '{symbol}' between {start_date} and {end_date}"
         )
 
-    # Remove timezone info from index for cleaner output
-    if data.index.tz is not None:
+    # Remove timezone info from index for cleaner output when index is datetime-like.
+    if isinstance(data.index, pd.DatetimeIndex) and data.index.tz is not None:
         data.index = data.index.tz_localize(None)
 
     # Round numerical values to 2 decimal places for cleaner display
@@ -169,6 +194,12 @@ def get_stock_stats_indicators_window(
         
     except Exception as e:
         print(f"Error getting bulk stockstats data: {e}")
+        err = str(e)
+        if "CERTIFICATE_VERIFY_FAILED" in err or "SSLError" in err:
+            return (
+                f"Indicator fetch failed due to SSL verification error for data source. "
+                f"Set INSECURE_YF=1 for temporary local bypass, or configure trusted CA."
+            )
         # Fallback to original implementation if bulk method fails
         ind_string = ""
         curr_date_dt = datetime.strptime(curr_date, "%Y-%m-%d")

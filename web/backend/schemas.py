@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 AnalystKey = Literal["market", "social", "news", "fundamentals"]
@@ -37,6 +37,14 @@ class RunRequest(BaseModel):
     anthropic_effort: Optional[str] = None
     output_language: str = Field(default="English")
     checkpoint: bool = False
+
+    @field_validator("ticker")
+    @classmethod
+    def normalize_ticker(cls, v: str) -> str:
+        s = (v or "").strip().upper()
+        if s.startswith("$"):
+            s = s[1:]
+        return s
 
 
 class RunSummary(BaseModel):

@@ -20,6 +20,16 @@ def _insecure_enabled() -> bool:
     return os.getenv("INSECURE_YF", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _normalize_symbol(symbol: str) -> str:
+    """Normalize user-facing ticker strings for yfinance."""
+    s = (symbol or "").strip()
+    # Some upstream paths pass "$TICKER" (e.g. "$005930.KS").
+    # Yahoo expects plain ticker without the leading dollar sign.
+    if s.startswith("$"):
+        s = s[1:]
+    return s
+
+
 def get_yf_session() -> Any | None:
     """Return a curl_cffi session when insecure mode is enabled."""
     global _cached_session, _session_initialized
@@ -44,6 +54,7 @@ def get_yf_session() -> Any | None:
 
 def ticker(symbol: str) -> Any:
     """Create a yfinance Ticker with optional shared insecure session."""
+    symbol = _normalize_symbol(symbol)
     session = get_yf_session()
     if session is None:
         return yf.Ticker(symbol)
@@ -52,6 +63,10 @@ def ticker(symbol: str) -> Any:
 
 def download(*args: Any, **kwargs: Any) -> Any:
     """Proxy yfinance download with optional shared insecure session."""
+    if args and isinstance(args[0], str):
+        args = (_normalize_symbol(args[0]),) + args[1:]
+    elif "tickers" in kwargs and isinstance(kwargs["tickers"], str):
+        kwargs["tickers"] = _normalize_symbol(kwargs["tickers"])
     kwargs.setdefault("session", get_yf_session())
     return yf.download(*args, **kwargs)
 

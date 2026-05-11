@@ -230,11 +230,15 @@ async def stream_events(
                     last_id = ev["id"]
                     yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
                 state = RUN_MANAGER.get_run(run_id)
-                if state and state["status"] in {"completed", "failed"}:
+                if state and state["status"] in {"completed", "failed", "cancelled"}:
+                    break
+                if not state:
                     break
             else:
                 state = RUN_MANAGER.get_run(run_id)
-                if state and state["status"] in {"completed", "failed"}:
+                if state and state["status"] in {"completed", "failed", "cancelled"}:
+                    break
+                if not state:
                     break
                 await asyncio.sleep(1.0)
 

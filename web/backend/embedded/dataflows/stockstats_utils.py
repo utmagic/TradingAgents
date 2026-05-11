@@ -1,5 +1,6 @@
 import time
 import logging
+import random
 
 import pandas as pd
 from web.backend.tls_env import configure_tls_ca_bundle
@@ -13,11 +14,12 @@ import os
 from web.backend.yfinance_client import download as yf_download
 from .config import get_config
 from .utils import safe_ticker_component
+from .naver_finance import fetch_ohlcv_naver, is_kr_symbol
 
 logger = logging.getLogger(__name__)
 
 
-def yf_retry(func, max_retries=3, base_delay=2.0):
+def yf_retry(func, max_retries=5, base_delay=5.0):
     """Execute a yfinance call with exponential backoff on rate limits.
 
     yfinance raises YFRateLimitError on HTTP 429 responses but does not
@@ -29,7 +31,7 @@ def yf_retry(func, max_retries=3, base_delay=2.0):
             return func()
         except YFRateLimitError:
             if attempt < max_retries:
-                delay = base_delay * (2 ** attempt)
+                delay = (base_delay * (2 ** attempt)) + random.uniform(0.0, 1.5)
                 logger.warning(f"Yahoo Finance rate limited, retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})")
                 time.sleep(delay)
             else:
@@ -78,16 +80,44 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     if os.path.exists(data_file):
         data = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
     else:
-        data = yf_retry(lambda: yf_download(
-            symbol,
-            start=start_str,
-            end=end_str,
-            multi_level_index=False,
-            progress=False,
-            auto_adjust=True,
-        ))
-        data = data.reset_index()
-        data.to_csv(data_file, index=False, encoding="utf-8")
+        try:
+            if is_kr_symbol(symbol):
+                data = fetch_ohlcv_naver(symbol, start_str, end_str)
+            else:
+                data = yf_retry(lambda: yf_download(
+                    symbol,
+                    start=start_str,
+                    end=end_str,
+                    multi_level_index=False,
+                    progress=False,
+                    auto_adjust=True,
+                )).reset_index()
+            if not data.empty and "Date" in data.columns:
+                data.to_csv(data_file, index=False, encoding="utf-8")
+        except YFRateLimitError:
+            logger.warning("Yahoo Finance rate limit persisted for %s; returning empty frame (no cache yet).", symbol)
+            return pd.DataFrame(columns=["Date", "Open", "High", "Low", "Close", "Volume"])
+
+    # Guard against stale/failed empty cache artifacts.
+    if data.empty or "Date" not in data.columns or "Close" not in data.columns:
+        try:
+            if is_kr_symbol(symbol):
+                data = fetch_ohlcv_naver(symbol, start_str, end_str)
+            else:
+                data = yf_retry(lambda: yf_download(
+                    symbol,
+                    start=start_str,
+                    end=end_str,
+                    multi_level_index=False,
+                    progress=False,
+                    auto_adjust=True,
+                )).reset_index()
+            if not data.empty and "Date" in data.columns:
+                data.to_csv(data_file, index=False, encoding="utf-8")
+        except YFRateLimitError:
+            logger.warning("Yahoo Finance rate limit persisted for %s; using current cache snapshot.", symbol)
+            if data.empty:
+                return pd.DataFrame(columns=["Date", "Open", "High", "Low", "Close", "Volume"])
 
     data = _clean_dataframe(data)
 

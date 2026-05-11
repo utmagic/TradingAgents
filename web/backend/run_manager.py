@@ -72,6 +72,13 @@ def _classify_message_type(message: Any) -> tuple[str, str | None]:
     return ("System", content)
 
 
+def _normalize_ticker_symbol(ticker: str) -> str:
+    s = (ticker or "").strip().upper()
+    if s.startswith("$"):
+        s = s[1:]
+    return s
+
+
 class RunManager:
     def list_runs(self) -> list[dict[str, Any]]:
         return DB.list_runs()
@@ -98,10 +105,8 @@ class RunManager:
         rec = DB.get_run(run_id)
         if not rec:
             return False, "run not found"
-        if rec["status"] in {"queued"}:
-            return False, "cannot delete a queued/running run"
-        if rec["status"] == "running" and not rec.get("cancel_requested"):
-            return False, "cannot delete a queued/running run"
+        # Allow deletion regardless of current run status.
+        # Worker loop checks run existence and exits when the row is gone.
         deleted = DB.delete_run(run_id)
         if not deleted:
             return False, "run not found"
@@ -109,9 +114,10 @@ class RunManager:
 
     def create_run(self, req: RunRequest) -> dict[str, Any]:
         run_id = uuid.uuid4().hex[:12]
+        normalized_ticker = _normalize_ticker_symbol(req.ticker)
         row = {
             "run_id": run_id,
-            "ticker": req.ticker.strip().upper(),
+            "ticker": normalized_ticker,
             "analysis_date": req.analysis_date.isoformat(),
             "status": "queued",
             "progress": 0,
@@ -131,6 +137,7 @@ class RunManager:
         DB.add_event(run_id, _now(), event_type, payload)
 
     def _execute_run(self, run_id: str, req: RunRequest) -> None:
+        normalized_ticker = _normalize_ticker_symbol(req.ticker)
         DB.update_run(run_id, status="running", started_at=_now(), progress=1)
         self._emit(run_id, "status", {"status": "running", "progress": 1})
 
@@ -168,10 +175,10 @@ class RunManager:
             processed_ids: set[str] = set()
 
             graph = TradingAgentsGraph(selected_analysts=req.analysts, config=config, debug=True)
-            init_state = graph.propagator.create_initial_state(req.ticker.strip().upper(), req.analysis_date.isoformat())
+            init_state = graph.propagator.create_initial_state(normalized_ticker, req.analysis_date.isoformat())
             args = graph.propagator.get_graph_args(callbacks=[])
 
-            self._emit(run_id, "meta", {"ticker": req.ticker.strip().upper(), "analysis_date": req.analysis_date.isoformat()})
+            self._emit(run_id, "meta", {"ticker": normalized_ticker, "analysis_date": req.analysis_date.isoformat()})
             trace = []
             for chunk in graph.graph.stream(init_state, **args):
                 current = DB.get_run(run_id)
@@ -265,8 +272,8 @@ class RunManager:
             graph.process_signal(final_state.get("final_trade_decision", ""))
 
             timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-            report_root = Path("reports") / f"{req.ticker.strip().upper()}_{timestamp}"
-            save_report_to_disk(final_state, req.ticker.strip().upper(), report_root)
+            report_root = Path("reports") / f"{normalized_ticker}_{timestamp}"
+            save_report_to_disk(final_state, normalized_ticker, report_root)
 
             report_files = sorted(str(p.relative_to(report_root)) for p in report_root.rglob("*.md"))
             # Ensure UI receives a final, fully-completed snapshot for every tracked agent.
@@ -285,6 +292,11 @@ class RunManager:
             )
             self._emit(run_id, "status", {"status": "completed", "progress": 100, "report_files": report_files})
         except Exception as exc:  # pragma: no cover
+            current = DB.get_run(run_id)
+            if current and (current.get("cancel_requested") or current.get("status") == "cancelled"):
+                DB.update_run(run_id, status="cancelled", ended_at=_now(), error=None)
+                self._emit(run_id, "status", {"status": "cancelled", "cancel_requested": True})
+                return
             DB.update_run(run_id, status="failed", ended_at=_now(), error=str(exc))
             self._emit(run_id, "status", {"status": "failed", "error": str(exc)})
 

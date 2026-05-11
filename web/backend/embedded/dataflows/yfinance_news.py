@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 from .stockstats_utils import yf_retry
 from web.backend.yfinance_client import ticker as yf_ticker
+from web.backend.yfinance_client import search as yf_search
 
 
 def _extract_article_data(article: dict) -> dict:
@@ -137,7 +138,7 @@ def get_global_news_yfinance(
 
     try:
         for query in search_queries:
-            search = yf_retry(lambda q=query: yf.Search(
+            search = yf_retry(lambda q=query: yf_search(
                 query=q,
                 news_count=limit,
                 enable_fuzzy_query=True,
