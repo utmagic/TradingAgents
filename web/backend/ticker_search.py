@@ -10,7 +10,11 @@ from urllib.parse import quote_plus
 
 import pandas as pd
 import requests
-import yfinance as yf
+from web.backend.tls_env import configure_tls_ca_bundle
+from web.backend.yfinance_client import search as yf_search
+
+configure_tls_ca_bundle()
+
 from parsel import Selector
 
 
@@ -498,7 +502,7 @@ def _search_krx(query: str, max_results: int = 1000) -> list[SearchResult]:
 
 def _search_yfinance(query: str, max_results: int = 1000) -> list[SearchResult]:
     try:
-        search = yf.Search(query=query, max_results=max_results)
+        search = yf_search(query=query, max_results=max_results)
     except Exception:
         return []
 

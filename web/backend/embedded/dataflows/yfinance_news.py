@@ -1,10 +1,14 @@
 """yfinance-based news data fetching functions."""
 
-import yfinance as yf
+from web.backend.tls_env import configure_tls_ca_bundle
+
+configure_tls_ca_bundle()
+
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 from .stockstats_utils import yf_retry
+from web.backend.yfinance_client import ticker as yf_ticker
 
 
 def _extract_article_data(article: dict) -> dict:
@@ -65,7 +69,7 @@ def get_news_yfinance(
         Formatted string containing news articles
     """
     try:
-        stock = yf.Ticker(ticker)
+        stock = yf_ticker(ticker)
         news = yf_retry(lambda: stock.get_news(count=20))
 
         if not news:

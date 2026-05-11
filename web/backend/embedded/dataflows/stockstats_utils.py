@@ -2,11 +2,15 @@ import time
 import logging
 
 import pandas as pd
-import yfinance as yf
+from web.backend.tls_env import configure_tls_ca_bundle
+
+configure_tls_ca_bundle()
+
 from yfinance.exceptions import YFRateLimitError
 from stockstats import wrap
 from typing import Annotated
 import os
+from web.backend.yfinance_client import download as yf_download
 from .config import get_config
 from .utils import safe_ticker_component
 
@@ -74,7 +78,7 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     if os.path.exists(data_file):
         data = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
     else:
-        data = yf_retry(lambda: yf.download(
+        data = yf_retry(lambda: yf_download(
             symbol,
             start=start_str,
             end=end_str,

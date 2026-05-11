@@ -7,7 +7,11 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple, List, Optional
 
-import yfinance as yf
+from web.backend.tls_env import configure_tls_ca_bundle
+
+configure_tls_ca_bundle()
+
+from web.backend.yfinance_client import ticker as yf_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -202,8 +206,8 @@ class TradingAgentsGraph:
             end = start + timedelta(days=holding_days + 7)  # buffer for weekends/holidays
             end_str = end.strftime("%Y-%m-%d")
 
-            stock = yf.Ticker(ticker).history(start=trade_date, end=end_str)
-            spy = yf.Ticker("SPY").history(start=trade_date, end=end_str)
+            stock = yf_ticker(ticker).history(start=trade_date, end=end_str)
+            spy = yf_ticker("SPY").history(start=trade_date, end=end_str)
 
             if len(stock) < 2 or len(spy) < 2:
                 return None, None, None

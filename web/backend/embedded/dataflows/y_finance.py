@@ -2,8 +2,12 @@ from typing import Annotated
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import pandas as pd
-import yfinance as yf
+from web.backend.tls_env import configure_tls_ca_bundle
+
+configure_tls_ca_bundle()
+
 import os
+from web.backend.yfinance_client import ticker as yf_ticker
 from .stockstats_utils import StockstatsUtils, _clean_dataframe, yf_retry, load_ohlcv, filter_financials_by_date
 
 def get_YFin_data_online(
@@ -16,7 +20,7 @@ def get_YFin_data_online(
     datetime.strptime(end_date, "%Y-%m-%d")
 
     # Create ticker object
-    ticker = yf.Ticker(symbol.upper())
+    ticker = yf_ticker(symbol.upper())
 
     # Fetch historical data for the specified date range
     data = yf_retry(lambda: ticker.history(start=start_date, end=end_date))
@@ -251,7 +255,7 @@ def get_fundamentals(
 ):
     """Get company fundamentals overview from yfinance."""
     try:
-        ticker_obj = yf.Ticker(ticker.upper())
+        ticker_obj = yf_ticker(ticker.upper())
         info = yf_retry(lambda: ticker_obj.info)
 
         if not info:
@@ -309,7 +313,7 @@ def get_balance_sheet(
 ):
     """Get balance sheet data from yfinance."""
     try:
-        ticker_obj = yf.Ticker(ticker.upper())
+        ticker_obj = yf_ticker(ticker.upper())
 
         if freq.lower() == "quarterly":
             data = yf_retry(lambda: ticker_obj.quarterly_balance_sheet)
@@ -341,7 +345,7 @@ def get_cashflow(
 ):
     """Get cash flow data from yfinance."""
     try:
-        ticker_obj = yf.Ticker(ticker.upper())
+        ticker_obj = yf_ticker(ticker.upper())
 
         if freq.lower() == "quarterly":
             data = yf_retry(lambda: ticker_obj.quarterly_cashflow)
@@ -373,7 +377,7 @@ def get_income_statement(
 ):
     """Get income statement data from yfinance."""
     try:
-        ticker_obj = yf.Ticker(ticker.upper())
+        ticker_obj = yf_ticker(ticker.upper())
 
         if freq.lower() == "quarterly":
             data = yf_retry(lambda: ticker_obj.quarterly_income_stmt)
@@ -403,7 +407,7 @@ def get_insider_transactions(
 ):
     """Get insider transactions data from yfinance."""
     try:
-        ticker_obj = yf.Ticker(ticker.upper())
+        ticker_obj = yf_ticker(ticker.upper())
         data = yf_retry(lambda: ticker_obj.insider_transactions)
         
         if data is None or data.empty:
